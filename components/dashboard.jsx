@@ -14,6 +14,7 @@ import {
   BarChart3,
   ExternalLink,
   Tag,
+  Download,
 } from "lucide-react";
 
 function formatMrr(value) {
@@ -54,8 +55,8 @@ export default function Dashboard() {
     try {
       const url = refresh ? "/api/startups?refresh=true" : "/api/startups";
       const res = await fetch(url);
-      if (!res.ok) throw new Error("Failed to fetch startups");
       const data = await res.json();
+      if (!res.ok) throw new Error(data.error || "Failed to fetch startups");
       setStartups(data.startups || []);
       setFetchedAt(data.fetchedAt);
     } catch (e) {
@@ -91,6 +92,48 @@ export default function Dashboard() {
     return list;
   }, [startups, activeCategory, search]);
 
+  const exportData = useCallback(
+    (format) => {
+      const data = filtered.length > 0 ? filtered : startups;
+      if (data.length === 0) return;
+
+      let content, filename, type;
+
+      if (format === "csv") {
+        const headers = ["Name", "Slug", "MRR", "MoM Growth (%)", "Category", "Founder", "Description", "For Sale", "Tech Stack"];
+        const rows = data.map((s) => [
+          s.name,
+          s.slug,
+          s.mrr,
+          s.momGrowth ?? "",
+          s.category,
+          s.founderName,
+          `"${(s.description || "").replace(/"/g, '""')}"`,
+          s.forSale ? "Yes" : "No",
+          `"${(s.techStack || []).join(", ")}"`,
+        ]);
+        content = [headers.join(","), ...rows.map((r) => r.join(","))].join("\n");
+        filename = "desklite-startups.csv";
+        type = "text/csv";
+      } else {
+        content = JSON.stringify(data, null, 2);
+        filename = "desklite-startups.json";
+        type = "application/json";
+      }
+
+      const blob = new Blob([content], { type });
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement("a");
+      a.href = url;
+      a.download = filename;
+      document.body.appendChild(a);
+      a.click();
+      document.body.removeChild(a);
+      URL.revokeObjectURL(url);
+    },
+    [filtered, startups]
+  );
+
   const totalMrr = useMemo(
     () => startups.reduce((sum, s) => sum + (s.mrr || 0), 0),
     [startups]
@@ -124,6 +167,24 @@ export default function Dashboard() {
                   Updated {timeAgo(fetchedAt)}
                 </span>
               )}
+              <Button
+                variant="outline"
+                size="sm"
+                onClick={() => exportData("csv")}
+                disabled={loading || startups.length === 0}
+              >
+                <Download className="h-4 w-4 mr-1.5" />
+                CSV
+              </Button>
+              <Button
+                variant="outline"
+                size="sm"
+                onClick={() => exportData("json")}
+                disabled={loading || startups.length === 0}
+              >
+                <Download className="h-4 w-4 mr-1.5" />
+                JSON
+              </Button>
               <Button
                 variant="outline"
                 size="sm"
@@ -317,6 +378,18 @@ function StartupCard({ startup }) {
             </div>
           )}
         </div>
+        {startup.techStack && startup.techStack.length > 0 && (
+          <div className="flex flex-wrap gap-1 mt-2">
+            {startup.techStack.map((tech) => (
+              <span
+                key={tech}
+                className="inline-flex items-center px-1.5 py-0.5 rounded text-[10px] font-medium bg-zinc-800 text-zinc-400 border border-zinc-700/50"
+              >
+                {tech}
+              </span>
+            ))}
+          </div>
+        )}
         {startup.founderName && (
           <p className="text-xs text-zinc-500 mt-2">
             by {startup.founderName}
